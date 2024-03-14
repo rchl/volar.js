@@ -33,13 +33,19 @@ export function register(context: ServiceContext) {
 		completionContext: vscode.CompletionContext = { triggerKind: 1 satisfies typeof vscode.CompletionTriggerKind.Invoked, },
 		token = NoneCancellationToken,
 	) => {
+		for (const [id, service] of Object.entries(context.services)) {
+			// @ts-ignore key
+			service._id = id
+		}
 
+		console.error(`framework - complete`)
 		let document: TextDocument | undefined;
 
 		if (
 			completionContext?.triggerKind === 3 satisfies typeof vscode.CompletionTriggerKind.TriggerForIncompleteCompletions
 			&& cache?.uri === uri
 		) {
+			console.error(`framework[1] - triggerKind === 3`)
 
 			for (const cacheData of cache.data) {
 
@@ -117,12 +123,15 @@ export function register(context: ServiceContext) {
 				mainCompletion: undefined,
 			};
 
+			console.error(`framework[2]: cache uri: ${uri}`)
+
 			// monky fix https://github.com/johnsoncodehk/volar/issues/1358
 			let isFirstMapping = true;
 
 			if (rootFile) {
 
 				await visitEmbedded(context.documents, rootFile, async (_, map) => {
+					console.error(`VISIT URI: ${map.virtualFileDocument.uri}`)
 
 					const services = Object.values(context.services).sort(sortServices);
 
@@ -134,12 +143,16 @@ export function register(context: ServiceContext) {
 					})) {
 
 						for (const service of services) {
+							// @ts-ignore key
+							const serviceId = service._id
+							const log = serviceId === 'html' || serviceId === 'typescript'
 
 							if (token.isCancellationRequested)
 								break;
 
 							if (!service.provideCompletionItems)
 								continue;
+
 
 							if (service.isAdditionalCompletion && !isFirstMapping)
 								continue;
@@ -149,12 +162,26 @@ export function register(context: ServiceContext) {
 
 							const isAdditional = _data && typeof _data.completion === 'object' && _data.completion.additional || service.isAdditionalCompletion;
 
-							if (cache!.mainCompletion && (!isAdditional || cache?.mainCompletion.documentUri !== map.virtualFileDocument.uri))
+							log && console.error(`framework2[service: ${serviceId}]`, {
+								isAdditionalCompletion: service.isAdditionalCompletion,
+								isFirstMapping,
+								isAdditional,
+								'cache.mainCompletion': cache!.mainCompletion,
+								uri_cache: cache!.mainCompletion?.documentUri,
+								uri_origi: map.virtualFileDocument.uri
+							})
+							if (/*serviceId !== 'html' &&*/ cache!.mainCompletion && (!isAdditional || cache?.mainCompletion.documentUri !== map.virtualFileDocument.uri)) {
+								log && console.error('skip(1)')
+								// @ts-ignore key
+								log && console.error('CACHE', cache?.data.map(d => [d.service._id, d.list.items.length]))
 								continue;
+							}
 
 							// avoid duplicate items with .vue and .vue.html
-							if (service.isAdditionalCompletion && cache?.data.some(data => data.service === service))
+							if (service.isAdditionalCompletion && cache?.data.some(data => data.service === service)) {
+								log && console.error('skip(2)')
 								continue;
+							}
 
 							const embeddedCompletionList = await service.provideCompletionItems(map.virtualFileDocument, mapped, completionContext!, token);
 
@@ -166,6 +193,7 @@ export function register(context: ServiceContext) {
 							}
 
 							if (!isAdditional) {
+								console.error(`framework2[service: ${serviceId}] - set uri cache to ${map.virtualFileDocument.uri}`)
 								cache!.mainCompletion = { documentUri: map.virtualFileDocument.uri };
 							}
 
@@ -204,6 +232,9 @@ export function register(context: ServiceContext) {
 				const services = Object.values(context.services).sort(sortServices);
 
 				for (const service of services) {
+					// @ts-ignore key
+					const serviceId = service._id
+					const log = serviceId === 'html' || serviceId === 'typescript'
 
 					if (token.isCancellationRequested)
 						break;
@@ -216,13 +247,26 @@ export function register(context: ServiceContext) {
 
 					if (completionContext?.triggerCharacter && !service.triggerCharacters?.includes(completionContext.triggerCharacter))
 						continue;
+					log && console.error(`framework3[service: ${serviceId}]`, {
+						isAdditionalCompletion: service.isAdditionalCompletion,
+						isFirstMapping,
+						'cache.mainCompletion': cache.mainCompletion,
+						uri_cache: cache.mainCompletion?.documentUri,
+						uri_origi: document.uri
+					})
 
-					if (cache.mainCompletion && (!service.isAdditionalCompletion || cache.mainCompletion.documentUri !== document.uri))
+					if (/*serviceId !== 'html' &&*/ cache.mainCompletion && (!service.isAdditionalCompletion || cache.mainCompletion.documentUri !== document.uri)) {
+						log && console.error('skip(1)')
+						// @ts-ignore key
+						log && console.error('CACHE', cache?.data.map(d => [d.service._id, d.list.items.length]))
 						continue;
+					}
 
 					// avoid duplicate items with .vue and .vue.html
-					if (service.isAdditionalCompletion && cache?.data.some(data => data.service === service))
+					if (service.isAdditionalCompletion && cache?.data.some(data => data.service === service)) {
+						log && console.error('skip(2)')
 						continue;
+					}
 
 					const completionList = await service.provideCompletionItems(document, position, completionContext, token);
 
@@ -230,6 +274,8 @@ export function register(context: ServiceContext) {
 						continue;
 
 					if (!service.isAdditionalCompletion) {
+						// @ts-ignore key
+						console.error(`framework3[service: ${service._id}] - set uri cache to ${map.virtualFileDocument.uri}`)
 						cache.mainCompletion = { documentUri: document.uri };
 					}
 
